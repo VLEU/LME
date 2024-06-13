@@ -74,6 +74,49 @@ def test_filter_hosts_insert(es_host, es_port, username, password):
     # Check to make sure the data was inserted
     assert(second_response_loaded['aggregations']['2']['buckets'][3]['key'] == 'testing.lme.local')
 
+def test_user_logon_events_insert(es_host, es_port, username, password):
+    # Get the current date
+    today = datetime.now()
+
+    # Generate timestamp one day before
+    one_day_before = (today - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+    # Generate timestamp one day after
+    one_day_after = (today + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+    # Computer software overview-> Filter Hosts
+    url = f"https://{es_host}:{es_port}"
+
+    # This is the query from the "Computer software overview} dashboard in Kibana
+    filter_query = load_json_schema(f"{current_script_dir}/queries/filter_logonevents.json")
+    filter_query['query']['bool']['filter'][2]['range']['@timestamp']['gte'] = one_day_before
+    filter_query['query']['bool']['filter'][2]['range']['@timestamp']['lte'] = one_day_after
+
+    # You can use this to compare to the update later
+    first_response = make_request(f"{url}/winlogbeat-*/_search", username, password, filter_query)
+    first_response_loaded = first_response.json()
+    
+    # Get the latest winlogbeat index
+    latest_index = get_latest_winlogbeat_index(es_host, es_port, username, password)
+
+    # This fixture is a pared down version of the data that will match the query 
+    fixture = load_json_schema(f"{current_script_dir}/fixtures/logonevents.json")
+    fixture['@timestamp'] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+    # Insert the fixture into the latest index
+    ans =  post_request(f"{url}/{latest_index}/_doc", username, password, fixture)
+
+    # Make sure to sleep for a few seconds to allow the data to be indexed
+    time.sleep(2)
+
+    # Make the same query again 
+    second_response = make_request(f"{url}/winlogbeat-*/_search", username, password, filter_query)
+
+    second_response_loaded = second_response.json()
+
+    # Check to make sure the data was inserted
+    assert(second_response_loaded['aggregations']['2']['buckets'][3]['key'] == 'testing.lme.local')
+
 
 
 def test_elastic_root(es_host, es_port, username, password):
